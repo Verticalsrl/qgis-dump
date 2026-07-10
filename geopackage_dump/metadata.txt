@@ -1,0 +1,16 @@
+[general]
+name=GeoPackage Dump
+qgisMinimumVersion=3.16
+description=Esporta una connessione PostgreSQL/PostGIS (intero database o singolo schema) in un file GeoPackage.
+version=1.0
+author=Vertical SRL
+email=info@vertical-srl.it
+about=Plugin che permette di selezionare una connessione PostgreSQL configurata in QGIS ed eseguire un dump (tramite ogr2ogr) verso un file GeoPackage, scegliendo se esportare l'intero database o un singolo schema. Utile per database pesanti dove non si vuole caricare tutti i layer in QGIS.
+tracker=
+repository=
+category=Database
+tags=postgresql,postgis,geopackage,gpkg,dump,export,database,backup
+icon=icon.png
+experimental=False
+deprecated=False
+server=False
