@@ -1,8 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-Funzioni di supporto per leggere le connessioni PostgreSQL/PostGIS salvate in QGIS,
-risolvere le credenziali (anche via authcfg) ed eseguire il dump verso GeoPackage
-tramite ogr2ogr.
+GeoPackage Dump - QGIS plugin
+Helper functions to read PostgreSQL/PostGIS connections saved in QGIS, resolve
+credentials (including via authcfg) and run the dump to GeoPackage via ogr2ogr.
+Vertical Srl - https://vertical-srl.it
+
+Copyright (C) 2026 Vertical Srl
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation; either version 2 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, see <https://www.gnu.org/licenses/>.
 """
 
 import re
@@ -10,39 +26,40 @@ import subprocess
 
 from qgis.core import QgsSettings, QgsApplication, QgsAuthMethodConfig
 
-# Schemi di sistema PostgreSQL da escludere sempre dall'elenco proposto all'utente
+# PostgreSQL system schemas to always exclude from the list shown to the user
 SYSTEM_SCHEMA_PREFIXES = ("pg_temp_", "pg_toast_temp_")
 SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast"}
 
 
 def _normalize_sslmode(raw):
     """
-    QGIS salva sslmode come nome dell'enum interno (es. 'SslPrefer', 'SslVerifyCa')
-    invece del valore atteso da libpq/psycopg2 ('prefer', 'verify-ca', ...).
-    Questa funzione normalizza entrambi i formati nel valore libpq corretto.
+    QGIS stores sslmode as the name of its internal enum (e.g. 'SslPrefer',
+    'SslVerifyCa') instead of the value expected by libpq/psycopg2 ('prefer',
+    'verify-ca', ...). This function normalizes both formats to the correct
+    libpq value.
     """
     if not raw:
         return ""
     value = str(raw).strip()
-    # rimuove l'eventuale prefisso "Ssl" (case-insensitive)
+    # strip the optional "Ssl" prefix (case-insensitive)
     value = re.sub(r"^[Ss]sl", "", value)
     if not value:
         return ""
-    # CamelCase -> kebab-case (es. "VerifyCa" -> "verify-ca", "Prefer" -> "prefer")
+    # CamelCase -> kebab-case (e.g. "VerifyCa" -> "verify-ca", "Prefer" -> "prefer")
     value = re.sub(r"(?<!^)(?=[A-Z])", "-", value).lower()
-    # normalizza eventuali varianti con underscore invece del trattino
+    # normalize any underscore variants to hyphens
     value = value.replace("_", "-")
 
     valid = {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}
     if value not in valid:
-        # Valore non riconosciuto: meglio ignorarlo (nessun sslmode) che far fallire
-        # la connessione con un valore che libpq non capisce.
+        # Unrecognized value: better to ignore it (no sslmode) than fail the
+        # connection with a value libpq doesn't understand.
         return ""
     return value
 
 
 def list_pg_connections():
-    """Ritorna la lista ordinata dei nomi delle connessioni PostgreSQL configurate in QGIS."""
+    """Return the sorted list of PostgreSQL connection names configured in QGIS."""
     settings = QgsSettings()
     settings.beginGroup("PostgreSQL/connections")
     names = settings.childGroups()
@@ -52,9 +69,9 @@ def list_pg_connections():
 
 def get_pg_connection_params(name):
     """
-    Legge i parametri di una connessione PostgreSQL salvata in QGIS (Impostazioni > Connessioni).
-    Se la connessione usa una "Configurazione autenticazione" (authcfg) prova a risolvere
-    username/password tramite il gestore autenticazioni di QGIS.
+    Read the parameters of a PostgreSQL connection saved in QGIS (Settings > Connections).
+    If the connection uses an "Authentication configuration" (authcfg), try to
+    resolve username/password via the QGIS authentication manager.
     """
     settings = QgsSettings()
     base = "PostgreSQL/connections/{}".format(name)
@@ -82,8 +99,8 @@ def get_pg_connection_params(name):
 
 
 def _connect(params):
-    """Apre una connessione psycopg2 usando i parametri risolti."""
-    import psycopg2  # import ritardato: potrebbe non servire se si usa solo ogr2ogr
+    """Open a psycopg2 connection using the resolved parameters."""
+    import psycopg2  # deferred import: not needed if only ogr2ogr is used
 
     kwargs = {}
     if params.get("service"):
@@ -103,7 +120,7 @@ def _connect(params):
 
 
 def list_schemas(params):
-    """Interroga il database e ritorna gli schemi disponibili (esclusi quelli di sistema)."""
+    """Query the database and return the available schemas (system schemas excluded)."""
     conn = _connect(params)
     try:
         cur = conn.cursor()
@@ -122,7 +139,7 @@ def list_schemas(params):
 
 
 def build_pg_connection_string(params, schemas=None):
-    """Costruisce la stringa di connessione OGR 'PG:...' da passare a ogr2ogr."""
+    """Build the OGR 'PG:...' connection string to pass to ogr2ogr."""
     parts = []
     if params.get("service"):
         parts.append("service={}".format(params["service"]))
@@ -147,7 +164,7 @@ def build_pg_connection_string(params, schemas=None):
 
 
 def build_ogr2ogr_command(params, output_path, schemas=None, overwrite=True):
-    """Costruisce la lista di argomenti per il comando ogr2ogr."""
+    """Build the list of arguments for the ogr2ogr command."""
     pg_conn = build_pg_connection_string(params, schemas=schemas)
 
     cmd = ["ogr2ogr", "-f", "GPKG"]
@@ -159,8 +176,8 @@ def build_ogr2ogr_command(params, output_path, schemas=None, overwrite=True):
 
 def run_command_streaming(cmd, line_callback=None):
     """
-    Esegue un comando in un sottoprocesso, inviando ogni riga di output
-    (stdout+stderr) a line_callback man mano che arriva. Ritorna il codice di uscita.
+    Run a command in a subprocess, sending each output line (stdout+stderr)
+    to line_callback as it arrives. Returns the exit code.
     """
     process = subprocess.Popen(
         cmd,

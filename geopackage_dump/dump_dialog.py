@@ -1,8 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-Dialog principale del plugin: permette di scegliere una connessione PostgreSQL/PostGIS
-configurata in QGIS, decidere se esportare l'intero database o un singolo schema,
-scegliere il file .gpkg di destinazione ed eseguire il dump con ogr2ogr.
+GeoPackage Dump - QGIS plugin
+Main dialog: lets you pick a PostgreSQL/PostGIS connection configured in QGIS,
+choose whether to export the whole database or a single schema, pick the
+destination .gpkg file and run the dump with ogr2ogr.
+Vertical Srl - https://vertical-srl.it
+
+Copyright (C) 2026 Vertical Srl
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation; either version 2 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, see <https://www.gnu.org/licenses/>.
 """
 
 from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal
@@ -26,8 +43,8 @@ from qgis.PyQt.QtWidgets import (
 
 from . import pg_utils
 
-# In PyQt6 (QGIS 4.x) gli enum sono namespaced (Qt.CursorShape.WaitCursor),
-# in PyQt5 (QGIS 3.x) sono ancora accessibili nella forma "piatta" Qt.WaitCursor.
+# In PyQt6 (QGIS 4.x) enums are namespaced (Qt.CursorShape.WaitCursor),
+# in PyQt5 (QGIS 3.x) they are still accessible in the "flat" form Qt.WaitCursor.
 try:
     _WAIT_CURSOR = Qt.CursorShape.WaitCursor
 except AttributeError:
@@ -35,7 +52,7 @@ except AttributeError:
 
 
 class DumpWorker(QThread):
-    """Esegue ogr2ogr in un thread separato per non bloccare l'interfaccia di QGIS."""
+    """Runs ogr2ogr in a separate thread so the QGIS UI doesn't freeze."""
 
     line_output = pyqtSignal(str)
     finished_ok = pyqtSignal(int)
@@ -51,8 +68,8 @@ class DumpWorker(QThread):
             self.finished_ok.emit(returncode)
         except FileNotFoundError:
             self.finished_error.emit(
-                "Comando 'ogr2ogr' non trovato. Verifica che GDAL sia disponibile "
-                "nel PATH dell'installazione di QGIS."
+                "Command 'ogr2ogr' not found. Check that GDAL is available "
+                "in the PATH of your QGIS installation."
             )
         except Exception as exc:  # noqa: BLE001
             self.finished_error.emit(str(exc))
@@ -62,7 +79,7 @@ class GeoPackageDumpDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Dump verso GeoPackage")
+        self.setWindowTitle("Dump to GeoPackage")
         self.resize(560, 480)
 
         self._worker = None
@@ -79,14 +96,14 @@ class GeoPackageDumpDialog(QDialog):
 
         self.combo_connections = QComboBox()
         self.combo_connections.currentTextChanged.connect(self._on_connection_changed)
-        form.addRow("Connessione QGIS:", self.combo_connections)
+        form.addRow("QGIS connection:", self.combo_connections)
 
         scope_widget = QWidget()
         scope_layout = QHBoxLayout(scope_widget)
         scope_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.radio_whole_db = QRadioButton("Intero database")
-        self.radio_schema = QRadioButton("Schema specifico")
+        self.radio_whole_db = QRadioButton("Whole database")
+        self.radio_schema = QRadioButton("Specific schema")
         self.radio_whole_db.setChecked(True)
         self.scope_group = QButtonGroup(self)
         self.scope_group.addButton(self.radio_whole_db)
@@ -95,7 +112,7 @@ class GeoPackageDumpDialog(QDialog):
 
         scope_layout.addWidget(self.radio_whole_db)
         scope_layout.addWidget(self.radio_schema)
-        form.addRow("Cosa esportare:", scope_widget)
+        form.addRow("What to export:", scope_widget)
 
         self.combo_schema = QComboBox()
         self.combo_schema.setEnabled(False)
@@ -105,13 +122,13 @@ class GeoPackageDumpDialog(QDialog):
         output_layout = QHBoxLayout(output_widget)
         output_layout.setContentsMargins(0, 0, 0, 0)
         self.edit_output = QLineEdit()
-        self.btn_browse = QPushButton("Sfoglia...")
+        self.btn_browse = QPushButton("Browse...")
         self.btn_browse.clicked.connect(self._on_browse)
         output_layout.addWidget(self.edit_output)
         output_layout.addWidget(self.btn_browse)
-        form.addRow("File GeoPackage:", output_widget)
+        form.addRow("GeoPackage file:", output_widget)
 
-        self.check_overwrite = QCheckBox("Sovrascrivi il file se esiste già")
+        self.check_overwrite = QCheckBox("Overwrite the file if it already exists")
         self.check_overwrite.setChecked(True)
         form.addRow("", self.check_overwrite)
 
@@ -123,29 +140,29 @@ class GeoPackageDumpDialog(QDialog):
         layout.addWidget(self.log_view)
 
         button_row = QHBoxLayout()
-        self.btn_refresh_schemas = QPushButton("Aggiorna schemi")
+        self.btn_refresh_schemas = QPushButton("Refresh schemas")
         self.btn_refresh_schemas.clicked.connect(self._load_schemas)
         button_row.addWidget(self.btn_refresh_schemas)
         button_row.addStretch()
 
-        self.btn_export = QPushButton("Esporta")
+        self.btn_export = QPushButton("Export")
         self.btn_export.clicked.connect(self._on_export)
         button_row.addWidget(self.btn_export)
 
-        self.btn_close = QPushButton("Chiudi")
+        self.btn_close = QPushButton("Close")
         self.btn_close.clicked.connect(self.close)
         button_row.addWidget(self.btn_close)
 
         layout.addLayout(button_row)
 
-    # -------------------------------------------------------------- azioni
+    # ------------------------------------------------------------- actions
     def _populate_connections(self):
         self.combo_connections.clear()
         names = pg_utils.list_pg_connections()
         if not names:
             self._append_log(
-                "Nessuna connessione PostgreSQL trovata. Creane una da "
-                "Livello > Aggiungi Layer > Aggiungi Layer PostGIS."
+                "No PostgreSQL connection found. Create one from "
+                "Layer > Add Layer > Add PostGIS Layer."
             )
         self.combo_connections.addItems(names)
 
@@ -169,7 +186,7 @@ class GeoPackageDumpDialog(QDialog):
     def _load_schemas(self):
         params = self._get_current_params()
         if not params:
-            QMessageBox.warning(self, "Attenzione", "Seleziona prima una connessione.")
+            QMessageBox.warning(self, "Warning", "Select a connection first.")
             return
         try:
             self.setCursor(_WAIT_CURSOR)
@@ -177,8 +194,8 @@ class GeoPackageDumpDialog(QDialog):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(
                 self,
-                "Errore di connessione",
-                "Impossibile leggere gli schemi dal database:\n{}".format(exc),
+                "Connection error",
+                "Could not read schemas from the database:\n{}".format(exc),
             )
             return
         finally:
@@ -186,11 +203,11 @@ class GeoPackageDumpDialog(QDialog):
 
         self.combo_schema.clear()
         self.combo_schema.addItems(schemas)
-        self._append_log("Trovati {} schemi.".format(len(schemas)))
+        self._append_log("Found {} schema(s).".format(len(schemas)))
 
     def _on_browse(self):
         path, _ = QFileDialog.getSaveFileName(
-            self, "Salva GeoPackage come", "", "GeoPackage (*.gpkg)"
+            self, "Save GeoPackage as", "", "GeoPackage (*.gpkg)"
         )
         if path:
             if not path.lower().endswith(".gpkg"):
@@ -214,35 +231,35 @@ class GeoPackageDumpDialog(QDialog):
     def _on_export(self):
         params = self._get_current_params()
         if not params:
-            QMessageBox.warning(self, "Attenzione", "Seleziona una connessione valida.")
+            QMessageBox.warning(self, "Warning", "Select a valid connection.")
             return
 
         output_path = self.edit_output.text().strip()
         if not output_path:
-            QMessageBox.warning(self, "Attenzione", "Specifica il file GeoPackage di destinazione.")
+            QMessageBox.warning(self, "Warning", "Specify the destination GeoPackage file.")
             return
 
         schemas = None
         if self.radio_schema.isChecked():
             schema_name = self.combo_schema.currentText()
             if not schema_name:
-                QMessageBox.warning(self, "Attenzione", "Seleziona uno schema da esportare.")
+                QMessageBox.warning(self, "Warning", "Select a schema to export.")
                 return
             schemas = [schema_name]
         else:
-            # Intero database: enumera esplicitamente tutti gli schemi non di sistema,
-            # perché ogr2ogr di default legge solo lo schema 'public'.
+            # Whole database: explicitly enumerate all non-system schemas, because
+            # ogr2ogr by default only reads the 'public' schema.
             try:
                 schemas = pg_utils.list_schemas(params)
             except Exception as exc:  # noqa: BLE001
                 QMessageBox.critical(
                     self,
-                    "Errore di connessione",
-                    "Impossibile leggere gli schemi dal database:\n{}".format(exc),
+                    "Connection error",
+                    "Could not read schemas from the database:\n{}".format(exc),
                 )
                 return
             if not schemas:
-                QMessageBox.warning(self, "Attenzione", "Nessuno schema trovato da esportare.")
+                QMessageBox.warning(self, "Warning", "No schema found to export.")
                 return
 
         cmd = pg_utils.build_ogr2ogr_command(
@@ -252,9 +269,9 @@ class GeoPackageDumpDialog(QDialog):
             overwrite=self.check_overwrite.isChecked(),
         )
 
-        # Mostra il comando (senza password in chiaro) nel log
-        self._append_log("Avvio dump verso: {}".format(output_path))
-        self._append_log("Schemi: {}".format(", ".join(schemas)))
+        # Show the command (without a plaintext password) in the log
+        self._append_log("Starting dump to: {}".format(output_path))
+        self._append_log("Schemas: {}".format(", ".join(schemas)))
 
         self._set_ui_enabled(False)
         self._worker = DumpWorker(cmd, self)
@@ -266,19 +283,19 @@ class GeoPackageDumpDialog(QDialog):
     def _on_finished_ok(self, returncode):
         self._set_ui_enabled(True)
         if returncode == 0:
-            self._append_log("Dump completato con successo.")
-            QMessageBox.information(self, "Completato", "Dump verso GeoPackage completato.")
+            self._append_log("Dump completed successfully.")
+            QMessageBox.information(self, "Completed", "Dump to GeoPackage completed.")
         else:
-            self._append_log("ogr2ogr terminato con codice di errore {}.".format(returncode))
+            self._append_log("ogr2ogr exited with error code {}.".format(returncode))
             QMessageBox.critical(
                 self,
-                "Errore",
-                "ogr2ogr ha restituito un errore (codice {}). Controlla il log per i dettagli.".format(
+                "Error",
+                "ogr2ogr returned an error (code {}). Check the log for details.".format(
                     returncode
                 ),
             )
 
     def _on_finished_error(self, message):
         self._set_ui_enabled(True)
-        self._append_log("Errore: {}".format(message))
-        QMessageBox.critical(self, "Errore", message)
+        self._append_log("Error: {}".format(message))
+        QMessageBox.critical(self, "Error", message)

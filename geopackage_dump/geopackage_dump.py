@@ -1,15 +1,31 @@
 # -*- coding: utf-8 -*-
 """
-Plugin QGIS "GeoPackage Dump".
-Aggiunge una voce di menu/toolbar che apre un dialog per esportare una connessione
-PostgreSQL/PostGIS (intero database o singolo schema) verso un file GeoPackage.
+GeoPackage Dump - QGIS plugin
+Adds a menu/toolbar entry that opens a dialog to export a PostgreSQL/PostGIS
+connection (whole database or a single schema) to a GeoPackage file.
+Vertical Srl - https://vertical-srl.it
+
+Copyright (C) 2026 Vertical Srl
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation; either version 2 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program; if not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
 
 from qgis.PyQt.QtGui import QIcon
 
-# In PyQt6 (QGIS 4.x) QAction vive in QtGui, in PyQt5 (QGIS 3.x) in QtWidgets.
+# In PyQt6 (QGIS 4.x) QAction lives in QtGui, in PyQt5 (QGIS 3.x) in QtWidgets.
 try:
     from qgis.PyQt.QtGui import QAction
 except ImportError:
@@ -28,10 +44,10 @@ class GeoPackageDumpPlugin:
 
     def initGui(self):
         icon_path = os.path.join(self.plugin_dir, "icon.png")
-        self.action = QAction(QIcon(icon_path), "Dump verso GeoPackage...", self.iface.mainWindow())
+        self.action = QAction(QIcon(icon_path), "Dump to GeoPackage...", self.iface.mainWindow())
         self.action.triggered.connect(self.run)
 
-        # Menu "Database" (se assente su vecchie versioni di QGIS, ripiega su un menu plugin generico)
+        # "Database" menu (falls back to a generic plugin menu on older QGIS versions)
         try:
             self.iface.addPluginToDatabaseMenu("&GeoPackage Dump", self.action)
         except AttributeError:
